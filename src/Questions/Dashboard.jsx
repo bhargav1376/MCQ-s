@@ -8,8 +8,9 @@ import {
 } from "./theme";
 
 const API_KEY =
-process.env.REACT_APP_DEEPAI_API_KEY || "";   
-const DEEPAI_URL = process.env.REACT_APP_DEEPAI_URL || "";
+process.env.REACT_APP_DEEPAI_API_KEY ||
+"tryit-73153228981-20b653ab2c92692b9cda64d7013b5b2c";   
+const DEEPAI_URL = process.env.REACT_APP_DEEPAI_URL || "/hacking_is_a_serious_crime";
 
 const THEME_OPTIONS = [
   { value: "auto", label: "Auto (by time)", icon: "⏱" },
