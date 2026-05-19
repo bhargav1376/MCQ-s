@@ -957,7 +957,10 @@
 .exam-option.correct {
   border-color: #22c55e;
   background: #f0fdf4;
-}
+  color: #047857;
+  font-weight: 600;
+  font-size: 1.05rem;
+ }
 
 .exam-option.wrong-selected {
   border-color: #ef4444;

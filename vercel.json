@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/hacking_is_a_serious_crime",
+      "destination": "https://api.deepai.org/hacking_is_a_serious_crime"
+    }
+  ]
+}

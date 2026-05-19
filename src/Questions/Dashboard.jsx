@@ -8,7 +8,23 @@ import {
 } from "./theme";
 
 const API_KEY = process.env.REACT_APP_DEEPAI_API_KEY ?? "";
-const DEEPAI_URL = process.env.REACT_APP_DEEPAI_URL ?? "";
+
+/** Dev: CRA proxy path. Production: full URL or same-origin path (Vercel rewrite in vercel.json). */
+function getDeepAIUrl() {
+  const configured = (process.env.REACT_APP_DEEPAI_URL ?? "").trim();
+  if (configured.startsWith("http://") || configured.startsWith("https://")) {
+    return configured;
+  }
+  if (configured.startsWith("/")) {
+    return configured;
+  }
+  if (process.env.NODE_ENV === "production") {
+    return "https://api.deepai.org/hacking_is_a_serious_crime";
+  }
+  return "/hacking_is_a_serious_crime";
+}
+
+const DEEPAI_URL = getDeepAIUrl();
 
 const THEME_OPTIONS = [
   { value: "auto", label: "Auto (by time)", icon: "⏱" },
