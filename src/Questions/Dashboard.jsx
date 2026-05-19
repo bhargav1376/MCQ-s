@@ -33,6 +33,36 @@ const THEME_OPTIONS = [
 ];
 
 const THEME_TRANSITION_MS = 600;
+const RECENT_HOME_LIMIT = 2;
+
+const ABOUT_HIGHLIGHTS = [
+  { icon: "🎯", text: "Auto-detects class level and question count from your prompt" },
+  { icon: "🌓", text: "Light & dark themes with exam-style review and explanations" },
+  { icon: "📄", text: "Download PDFs and revisit past quizzes anytime from History" },
+];
+
+const HOME_FEATURES = [
+  {
+    icon: "🤖",
+    title: "AI-powered generation",
+    text: "Type any topic — Python, 1st class maths, GK, history — and get a full MCQ set in seconds.",
+  },
+  {
+    icon: "💻",
+    title: "Coding & normal modes",
+    text: "Programming topics get syntax-highlighted code blocks. School subjects use clean text-only questions.",
+  },
+  {
+    icon: "📝",
+    title: "Exam-style practice",
+    text: "One question at a time, instant scoring, typed explanations, and PDF export when you are done.",
+  },
+  {
+    icon: "📊",
+    title: "Track your progress",
+    text: "Every quiz is saved in History with scores so you can retry topics and see improvement.",
+  },
+];
 
 const GENERATION_STEPS = [
   { label: "Analyzing your topic", etaSec: 5 },
@@ -581,8 +611,10 @@ export default function Dashboard() {
   );
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [themeOverlay, setThemeOverlay] = useState(null);
   const themeMenuRef = useRef(null);
+  const mobileMenuRef = useRef(null);
 
   useEffect(() => {
     setHistory(loadHistoryFromStorage());
@@ -605,6 +637,24 @@ export default function Dashboard() {
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [themeMenuOpen]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return undefined;
+    const onPointerDown = (e) => {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target)) {
+        setMobileMenuOpen(false);
+      }
+    };
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") setMobileMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [mobileMenuOpen]);
 
   useEffect(() => {
     const onScroll = () => {
@@ -664,6 +714,7 @@ export default function Dashboard() {
 
   const handleThemeOverrideChange = (value) => {
     setThemeMenuOpen(false);
+    setMobileMenuOpen(false);
     const apply = () => applyThemeState(value);
 
     if (resolveNextTheme(value) === activeTheme) {
@@ -719,9 +770,20 @@ export default function Dashboard() {
     }
   }, [query]);
 
+  const closeMobileMenu = () => setMobileMenuOpen(false);
+
+  const openHistoryPage = () => {
+    setPage("history");
+    setShowAIInput(false);
+    setThemeMenuOpen(false);
+    setMobileMenuOpen(false);
+    setError("");
+  };
+
   const resetToHome = () => {
     setPage("home");
     setShowAIInput(false);
+    setMobileMenuOpen(false);
     setQuestions([]);
     setAnswers({});
     setSubmitted(false);
@@ -773,6 +835,12 @@ export default function Dashboard() {
     setActiveInfo(null);
     setShowAIInput(true);
     setPage("home");
+    setMobileMenuOpen(false);
+    window.requestAnimationFrame(() => {
+      document
+        .querySelector(".hero-card--home")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const loadHistoryQuiz = (quiz) => {
@@ -989,29 +1057,226 @@ export default function Dashboard() {
   const canGenerate =
     query.trim() && (codingEnabled ? Boolean(questionMode) : true);
 
+  const recentQuizzes = history.slice(0, RECENT_HOME_LIMIT);
+  const hasMoreHistory = history.length > RECENT_HOME_LIMIT;
+
+  const renderQuizHistoryCard = (quiz, variant = "list") => (
+    <div
+      key={quiz.id}
+      className={`history-item history-item--${variant} ${
+        currentQuizId === quiz.id ? "active" : ""
+      }`}
+    >
+      <button
+        type="button"
+        className="history-item-info"
+        onClick={() => loadHistoryQuiz(quiz)}
+      >
+        <div className="history-item-title">
+          {quiz.query || "Untitled quiz"}
+        </div>
+        <div className="history-item-meta">
+          {new Date(quiz.createdAt).toLocaleString()}
+          {quiz.questionMode === "coding" ? " · Coding" : " · Normal"}
+          {quiz.result
+            ? ` · ${quiz.result.score}/${quiz.result.total} (${quiz.result.percentage}%)`
+            : " · In progress"}
+        </div>
+        {quiz.result && (
+          <div className="history-score-pill">
+            {quiz.result.percentage}%
+          </div>
+        )}
+      </button>
+      <div className="history-item-actions">
+        <button
+          type="button"
+          className="btn-danger btn-sm"
+          onClick={(e) => deleteQuiz(quiz.id, e)}
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderQuizCreateForm = () => (
+    <div className="hero-create-form">
+      <input
+        type="text"
+        className="hero-create-input"
+        placeholder='e.g. "1st class maths 20 mcqs" or "C++ 15 mcqs"'
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) =>
+          e.key === "Enter" && page === "home" && canGenerate && generateQuiz()
+        }
+        autoFocus
+      />
+      {gradePreview && (
+        <p className="grade-hint">
+          📚 Detected level: <strong>{gradePreview.levelText}</strong>
+          {gradePreview.subject && (
+            <> · Subject: <strong>{gradePreview.subject}</strong></>
+          )}
+          {" "}
+          · Will generate <strong>{previewMcqCount}</strong> questions
+        </p>
+      )}
+      {!gradePreview && query.trim() && (
+        <p className="grade-hint">
+          Will generate <strong>{previewMcqCount}</strong> questions
+          {schoolTopic && " (normal text MCQs)"}
+        </p>
+      )}
+      <div className="question-mode-section">
+        <div className="question-mode-header">
+          <span className="question-mode-label">
+            Question type
+            {codingEnabled && <span className="required-star"> *</span>}
+          </span>
+          <span className="question-mode-hint">
+            {codingEnabled
+              ? "Select one for programming topics"
+              : "Normal questions (auto-selected for class / GK)"}
+          </span>
+        </div>
+        <div className="mode-buttons">
+          {["coding", "normal"].map((modeKey) => {
+            const isCodingMode = modeKey === "coding";
+            const disabled = isCodingMode && !codingEnabled;
+            return (
+              <div key={modeKey} className="mode-btn-wrap">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  className={`mode-btn ${questionMode === modeKey ? "selected" : ""} ${disabled ? "mode-btn-disabled" : ""}`}
+                  onClick={() => {
+                    if (disabled) return;
+                    setQuestionMode(modeKey);
+                    setError("");
+                  }}
+                >
+                  <span className="mode-btn-icon">
+                    {isCodingMode ? "💻" : "📋"}
+                  </span>
+                  <span className="mode-btn-title">
+                    {isCodingMode ? "Full coding" : "Normal questions"}
+                  </span>
+                  <span
+                    role="button"
+                    tabIndex={disabled ? -1 : 0}
+                    className="info-icon-btn"
+                    title="What does this mean?"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveInfo(activeInfo === modeKey ? null : modeKey);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setActiveInfo(activeInfo === modeKey ? null : modeKey);
+                      }
+                    }}
+                  >
+                    ⓘ
+                  </span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        {!codingEnabled && query.trim() && (
+          <p className="mode-auto-note">
+            Full coding is only for programming languages (Python, C, C++,
+            Java, etc.). Class subjects &amp; GK use normal questions.
+          </p>
+        )}
+        {activeInfo && (
+          <div className="mode-detail-box">
+            <strong>{QUESTION_MODE_INFO[activeInfo].title}</strong>
+            <p>{QUESTION_MODE_INFO[activeInfo].detail}</p>
+          </div>
+        )}
+      </div>
+      <div className="quiz-input-actions hero-create-actions">
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={generateQuiz}
+          disabled={!canGenerate}
+        >
+          Generate Quiz
+        </button>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => {
+            setShowAIInput(false);
+            setError("");
+            setQuestionMode(null);
+            setActiveInfo(null);
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+      {error && <p className="error-text">{error}</p>}
+    </div>
+  );
+
   const renderHeader = () => (
     <header
       className={`site-header${headerScrolled ? " site-header--scrolled" : ""}`}
     >
       <button type="button" className="site-brand" onClick={resetToHome}>
-        <div className="site-brand-icon">📝</div>
+        <div className="site-brand-icon"><img className="logo-image" src="/logo.png" alt="MCQ Studio" /></div>
         <div className="site-brand-text">
           <h1>MCQ Studio</h1>
           <span className="site-brand-text-sub">Create your own MCQs</span>
         </div>
       </button>
-      <div className="header-actions">
+      <nav className="header-nav header-nav--desktop" aria-label="Main">
+        <button
+          type="button"
+          className={`header-nav-link${page === "home" ? " active" : ""}`}
+          onClick={resetToHome}
+          title="Home"
+        >
+          <span className="header-nav-icon" aria-hidden>
+            🏠
+          </span>
+          <span className="header-nav-text">Home</span>
+        </button>
+        <button
+          type="button"
+          className={`header-nav-link${page === "history" ? " active" : ""}`}
+          onClick={openHistoryPage}
+          title="History"
+        >
+          <span className="header-nav-icon" aria-hidden>
+            📋
+          </span>
+          <span className="header-nav-text">History</span>
+          {history.length > 0 && (
+            <span className="header-nav-badge">{history.length}</span>
+          )}
+        </button>
+      </nav>
+      <div className="header-actions header-actions--desktop">
         <div
-          className={`theme-dropdown${themeMenuOpen ? " is-open" : ""}`}
+          className={`theme-dropdown theme-dropdown--desktop${themeMenuOpen ? " is-open" : ""}`}
           ref={themeMenuRef}
         >
           <button
             type="button"
-            className="theme-dropdown-trigger"
+            className="theme-dropdown-trigger theme-dropdown-trigger--header"
             onClick={() => setThemeMenuOpen((open) => !open)}
             aria-expanded={themeMenuOpen}
             aria-haspopup="listbox"
-            aria-label="Theme"
+            aria-label={`Theme: ${themeTriggerLabel}`}
+            title={themeTriggerLabel}
           >
             <span className="theme-dropdown-trigger-icon" aria-hidden>
               {themeTriggerIcon}
@@ -1049,11 +1314,81 @@ export default function Dashboard() {
             ))}
           </ul>
         </div>
-        {page !== "home" && (
-          <button type="button" className="header-home-btn" onClick={resetToHome}>
-            Home
-          </button>
+      </div>
+
+      <div className="header-mobile-wrap" ref={mobileMenuRef}>
+        <button
+          type="button"
+          className={`mobile-menu-btn${mobileMenuOpen ? " is-open" : ""}`}
+          onClick={() => setMobileMenuOpen((open) => !open)}
+          aria-expanded={mobileMenuOpen}
+          aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+        >
+          <span className="mobile-menu-bar" />
+          <span className="mobile-menu-bar" />
+          <span className="mobile-menu-bar" />
+        </button>
+        {mobileMenuOpen && (
+          <div
+            className="mobile-menu-backdrop"
+            onClick={closeMobileMenu}
+            aria-hidden
+          />
         )}
+        <div
+          className={`mobile-menu-panel${mobileMenuOpen ? " is-open" : ""}`}
+          role="menu"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className={`mobile-menu-item${page === "home" ? " active" : ""}`}
+            onClick={() => {
+              resetToHome();
+              closeMobileMenu();
+            }}
+          >
+            <span className="mobile-menu-item-icon" aria-hidden>
+              🏠
+            </span>
+            <span className="mobile-menu-item-text">Home</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={`mobile-menu-item${page === "history" ? " active" : ""}`}
+            onClick={openHistoryPage}
+          >
+            <span className="mobile-menu-item-icon" aria-hidden>
+              📋
+            </span>
+            <span className="mobile-menu-item-text">History</span>
+            {history.length > 0 && (
+              <span className="header-nav-badge">{history.length}</span>
+            )}
+          </button>
+          <div className="mobile-menu-divider" role="separator" />
+          <p className="mobile-menu-label">Theme</p>
+          {THEME_OPTIONS.map(({ value, label, icon }) => (
+            <button
+              key={value}
+              type="button"
+              role="menuitem"
+              className={`mobile-menu-item${themeOverride === value ? " active" : ""}`}
+              onClick={() => handleThemeOverrideChange(value)}
+            >
+              <span className="mobile-menu-item-icon" aria-hidden>
+                {icon}
+              </span>
+              <span className="mobile-menu-item-text">{label}</span>
+              {themeOverride === value && (
+                <span className="theme-dropdown-check" aria-hidden>
+                  ✓
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
     </header>
   );
@@ -1210,197 +1545,129 @@ export default function Dashboard() {
 
         {page === "home" && (
           <>
-            <section className="hero-card">
+            <section
+              className={`hero-card hero-card--home${showAIInput ? " hero-card--creating" : ""}`}
+            >
               <div className="hero-icon">✨</div>
               <span className="hero-tagline">AI-Powered Practice Tests</span>
               <h2>Create Your Own MCQs</h2>
-              <p>
-                Enter any topic, generate exam-style questions instantly, and
-                track your scores over time.
+              <p className="hero-lead">
+                MCQ Studio turns any topic into a ready-to-take exam — with smart
+                question types, instant scoring, and saved history.
               </p>
-              {!showAIInput && (
-                <button type="button" className="btn-primary" onClick={startNewQuiz}>
-                  + Create New Quiz
-                </button>
+              {!showAIInput ? (
+                <div className="hero-cta-row">
+                  <button type="button" className="btn-primary" onClick={startNewQuiz}>
+                    + Create New Quiz
+                  </button>
+                  {history.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={openHistoryPage}
+                    >
+                      View History ({history.length})
+                    </button>
+                  )}
+                </div>
+              ) : (
+                renderQuizCreateForm()
               )}
             </section>
 
-            {showAIInput && (
-              <div className="quiz-input-panel">
-                <input
-                  type="text"
-                  placeholder='e.g. "1st class maths 20 mcqs" or "C++ 15 mcqs"'
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) =>
-                    e.key === "Enter" && page === "home" && canGenerate && generateQuiz()
-                  }
-                />
-                {gradePreview && (
-                  <p className="grade-hint">
-                    📚 Detected level: <strong>{gradePreview.levelText}</strong>
-                    {gradePreview.subject && (
-                      <> · Subject: <strong>{gradePreview.subject}</strong></>
-                    )}
-                    {" "}
-                    · Will generate <strong>{previewMcqCount}</strong> questions
-                  </p>
-                )}
-                {!gradePreview && query.trim() && (
-                  <p className="grade-hint">
-                    Will generate <strong>{previewMcqCount}</strong> questions
-                    {schoolTopic && " (normal text MCQs)"}
-                  </p>
-                )}
-
-                <div className="question-mode-section">
-                  <div className="question-mode-header">
-                    <span className="question-mode-label">
-                      Question type
-                      {codingEnabled && <span className="required-star"> *</span>}
-                    </span>
-                    <span className="question-mode-hint">
-                      {codingEnabled
-                        ? "Select one for programming topics"
-                        : "Normal questions (auto-selected for class / GK)"}
-                    </span>
-                  </div>
-
-                  <div className="mode-buttons">
-                    {["coding", "normal"].map((modeKey) => {
-                      const isCodingMode = modeKey === "coding";
-                      const disabled = isCodingMode && !codingEnabled;
-                      return (
-                      <div key={modeKey} className="mode-btn-wrap">
-                        <button
-                          type="button"
-                          disabled={disabled}
-                          className={`mode-btn ${questionMode === modeKey ? "selected" : ""} ${disabled ? "mode-btn-disabled" : ""}`}
-                          onClick={() => {
-                            if (disabled) return;
-                            setQuestionMode(modeKey);
-                            setError("");
-                          }}
-                        >
-                          <span className="mode-btn-icon">
-                            {isCodingMode ? "💻" : "📋"}
-                          </span>
-                          <span className="mode-btn-title">
-                            {isCodingMode ? "Full coding" : "Normal questions"}
-                          </span>
-                          <span
-                            role="button"
-                            tabIndex={disabled ? -1 : 0}
-                            className="info-icon-btn"
-                            title="What does this mean?"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveInfo(activeInfo === modeKey ? null : modeKey);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                setActiveInfo(activeInfo === modeKey ? null : modeKey);
-                              }
-                            }}
-                          >
-                            ⓘ
-                          </span>
-                        </button>
-                      </div>
-                      );
-                    })}
-                  </div>
-                  {!codingEnabled && query.trim() && (
-                    <p className="mode-auto-note">
-                      Full coding is only for programming languages (Python, C, C++,
-                      Java, etc.). Class subjects &amp; GK use normal questions.
-                    </p>
-                  )}
-
-                  {activeInfo && (
-                    <div className="mode-detail-box">
-                      <strong>{QUESTION_MODE_INFO[activeInfo].title}</strong>
-                      <p>{QUESTION_MODE_INFO[activeInfo].detail}</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="quiz-input-actions">
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    onClick={generateQuiz}
-                    disabled={!canGenerate}
-                  >
-                    Generate Quiz
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => {
-                      setShowAIInput(false);
-                      setError("");
-                      setQuestionMode(null);
-                      setActiveInfo(null);
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-                {error && <p className="error-text">{error}</p>}
+            <section className="about-card">
+              <div className="about-card-header">
+                <span className="about-card-badge">About the app</span>
+                <h3 className="about-card-title">What is MCQ Studio?</h3>
               </div>
-            )}
+              <p className="about-card-lead">
+                A free exam builder for students and self-learners. Describe what
+                you want to practice — like{" "}
+                <strong>“10th class science 25 mcqs”</strong> or{" "}
+                <strong>“JavaScript output questions”</strong> — and AI writes
+                multiple-choice questions you can take one-by-one, like a real test.
+              </p>
+              <ul className="about-highlights">
+                {ABOUT_HIGHLIGHTS.map((item) => (
+                  <li key={item.text} className="about-highlight-item">
+                    <span className="about-highlight-icon" aria-hidden>
+                      {item.icon}
+                    </span>
+                    <span>{item.text}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
 
-            {history.length > 0 && (
-              <section className="history-section">
-                <h3>Your quizzes</h3>
-                <div className="history-list">
-                  {history.map((quiz) => (
-                    <div
-                      key={quiz.id}
-                      className={`history-item ${
-                        currentQuizId === quiz.id ? "active" : ""
-                      }`}
+            <section className="features-grid">
+              {HOME_FEATURES.map((f) => (
+                <article key={f.title} className="feature-card shine-card">
+                  <span className="feature-card-icon" aria-hidden>
+                    {f.icon}
+                  </span>
+                  <h4>{f.title}</h4>
+                  <p>{f.text}</p>
+                </article>
+              ))}
+            </section>
+
+            {recentQuizzes.length > 0 && (
+              <section className="recent-section">
+                <div className="section-head">
+                  <h3>Recent quizzes</h3>
+                  {hasMoreHistory && (
+                    <button
+                      type="button"
+                      className="section-head-btn"
+                      onClick={openHistoryPage}
                     >
-                      <button
-                        type="button"
-                        className="history-item-info"
-                        onClick={() => loadHistoryQuiz(quiz)}
-                      >
-                        <div className="history-item-title">
-                          {quiz.query || "Untitled quiz"}
-                        </div>
-                        <div className="history-item-meta">
-                          {new Date(quiz.createdAt).toLocaleString()}
-                          {quiz.questionMode === "coding" ? " · Coding" : " · Normal"}
-                          {quiz.result
-                            ? ` · Score: ${quiz.result.score}/${quiz.result.total} (${quiz.result.percentage}%)`
-                            : " · Not completed"}
-                        </div>
-                      </button>
-                      <div className="history-item-actions">
-                        <button
-                          type="button"
-                          className="btn-danger"
-                          onClick={(e) => deleteQuiz(quiz.id, e)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                      View all {history.length} →
+                    </button>
+                  )}
+                </div>
+                <div className="recent-grid">
+                  {recentQuizzes.map((quiz) =>
+                    renderQuizHistoryCard(quiz, "card")
+                  )}
                 </div>
               </section>
             )}
 
             {!showAIInput && history.length === 0 && (
-              <p className="empty-state">
-                No quizzes yet — create your first MCQ exam above.
+              <p className="empty-state empty-state--home">
+                No quizzes yet — tap <strong>Create New Quiz</strong> to start.
               </p>
             )}
           </>
+        )}
+
+        {page === "history" && (
+          <section className="history-page">
+            <div className="history-page-header">
+              <h2>Quiz History</h2>
+              <p>
+                All your saved exams — open to continue, review scores, or delete.
+              </p>
+              <button type="button" className="btn-primary" onClick={startNewQuiz}>
+                + Create New Quiz
+              </button>
+            </div>
+            {history.length === 0 ? (
+              <div className="history-empty-card">
+                <span className="history-empty-icon" aria-hidden>
+                  📭
+                </span>
+                <p>No quizzes saved yet.</p>
+                <button type="button" className="btn-secondary" onClick={resetToHome}>
+                  Go to Home
+                </button>
+              </div>
+            ) : (
+              <div className="history-list history-list--page">
+                {history.map((quiz) => renderQuizHistoryCard(quiz, "list"))}
+              </div>
+            )}
+          </section>
         )}
 
         {page === "exam" && currentQ && (
@@ -1464,7 +1731,7 @@ export default function Dashboard() {
               >
                 Download PDF (questions)
               </button>
-              {currentQuizId && (
+              {/* {currentQuizId && (
                 <button
                   type="button"
                   className="btn-danger"
@@ -1475,7 +1742,7 @@ export default function Dashboard() {
                 >
                   Delete quiz
                 </button>
-              )}
+              )} */}
             </div>
           </div>
         )}
